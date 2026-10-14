@@ -1,0 +1,72 @@
+#!/bin/bash
+FILE="$1"
+if [ -z "$FILE" ]; then
+  echo "Usage: ai-check <filepath>"
+  exit 1
+fi
+
+EXT="${FILE##*.}"
+
+case "$EXT" in
+  # 1. MARKDOWN & EMBEDDED MERMAID
+  md)
+    markdownlint "$FILE" 2>/dev/null
+    if grep -q '```mermaid' "$FILE"; then
+      TMP_OUT="/tmp/mermaid_check_$$.svg"
+      npx -y @mermaid-js/mermaid-cli -i "$FILE" -o "$TMP_OUT"
+      STATUS=$?
+      rm -f "$TMP_OUT"
+      if [ $STATUS -ne 0 ]; then
+        exit $STATUS
+      fi
+    fi
+    ;;
+
+  # 2. JAVASCRIPT / TYPESCRIPT / JSON
+  js|jsx|ts|tsx)
+    npx -y oxlint@latest "$FILE"
+    ;;
+  json)
+    jq . "$FILE" > /dev/null
+    ;;
+
+  # 3. PYTHON
+  py)
+    uvx ruff check "$FILE" 2>/dev/null || python3 -m py_compile "$FILE"
+    ;;
+
+  # 4. SHELL / BASH / ZSH
+  sh|bash|zsh)
+    shellcheck "$FILE" 2>/dev/null || bash -n "$FILE"
+    ;;
+
+  # 5. YAML / CONFIGS
+  yaml|yml)
+    yamllint "$FILE"
+    ;;
+
+  # 6. GO
+  go)
+    go vet "$FILE" 2>/dev/null || go fmt -n "$FILE"
+    ;;
+
+  # 7. RUST
+  rs)
+    rustc --parse-only "$FILE"
+    ;;
+
+  # 8. C / C++
+  c|cpp|h|hpp)
+    gcc -fsyntax-only "$FILE" 2>/dev/null || clang -fsyntax-only "$FILE"
+    ;;
+
+  # 9. HTML / XML
+  html|xml)
+    xmllint --noout "$FILE" 2>/dev/null
+    ;;
+
+  # CATCH-ALL FALLBACK
+  *)
+    echo "No specific linter configured for .$EXT. File skipped."
+    ;;
+esac
